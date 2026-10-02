@@ -42,44 +42,36 @@ with col2:
     water = st.radio("Pipe-borne Water Access", options=["Yes", "No"])
 
 if st.button("Predict Land Valuation", use_container_width=True):
-    # 1. Create input dictionary
-    input_data = {
-        'lga': lga,
-        'geopolitical_zone': geopolitical_zone,
-        'land_size_sqm': land_size_sqm,
-        'title_type': title_type,
-        'land_use': land_use,
-        'dist_main_road_km': dist_main_road,
-        'electricity_access': 1 if electricity == "Yes" else 0,
-        'water_access': 1 if water == "Yes" else 0,
-        'latitude': 9.6139,
-        'longitude': 6.5569
-    }
+    # 1. Ask the model exactly what features it was trained on
+    expected_features = model.get_booster().feature_names
     
-    input_df = pd.DataFrame([input_data])
-    
-    # 2. One-Hot Encode categorical variables matching training categories
-    categorical_cols = {
-        'lga': lga_list,
-        'geopolitical_zone': zone_list,
-        'title_type': title_list,
-        'land_use': use_list
-    }
-    
-    encoded_features = []
-    for col, categories in categorical_cols.items():
-        for category in categories:
-            col_name = f"cat__{col}_{category}"
-            input_df[col_name] = 1.0 if input_data[col] == category else 0.0
-            encoded_features.append(col_name)
-            
-    # Drop raw string columns
-    input_df = input_df.drop(columns=['lga', 'geopolitical_zone', 'title_type', 'land_use'])
-    
-    # Reorder columns exactly as XGBoost expects them
-    numerical_cols = ['land_size_sqm', 'dist_main_road_km', 'electricity_access', 'water_access', 'latitude', 'longitude']
-    final_df = input_df[encoded_features + numerical_cols]
-    
-    # 3. Predict directly with XGBoost
-    prediction = model.predict(final_df)[0]
-    st.success(f"### Estimated Value: **₦{prediction:,.2f}**")
+    if expected_features is None or expected_features[0] == 'f0':
+        st.error("Model format error: Please ensure you uploaded the model.json generated using pandas get_dummies.")
+    else:
+        # 2. Create an empty dictionary filled with 0s matching the model's exact expectations
+        feature_dict = {feat: 0.0 for feat in expected_features}
+        
+        # 3. Intelligently map the user inputs into the correct expected columns
+        for feat in expected_features:
+            # Map numerical variables
+            if 'land_size' in feat: 
+                feature_dict[feat] = float(land_size_sqm)
+            elif 'dist_main_road' in feat: 
+                feature_dict[feat] = float(dist_main_road)
+            elif 'electricity' in feat: 
+                feature_dict[feat] = 1.0 if electricity == "Yes" else 0.0
+            elif 'water' in feat: 
+                feature_dict[feat] = 1.0 if water == "Yes" else 0.0
+            elif 'latitude' in feat: 
+                feature_dict[feat] = 9.6139
+            elif 'longitude' in feat: 
+                feature_dict[feat] = 6.5569
+            # Map categorical variables (if the selected option name is anywhere in the column name, turn it to 1)
+            elif str(lga) in feat or str(geopolitical_zone) in feat or str(title_type) in feat or str(land_use) in feat:
+                feature_dict[feat] = 1.0
+                
+        # 4. Convert perfectly aligned features into a DataFrame and Predict
+        final_df = pd.DataFrame([feature_dict])
+        prediction = model.predict(final_df)[0]
+        
+        st.success(f"### Estimated Value: **₦{prediction:,.2f}**")

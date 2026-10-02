@@ -1,14 +1,18 @@
 import streamlit as st
 import pandas as pd
 import joblib
+from xgboost import XGBRegressor
 
 st.set_page_config(page_title="Niger State Land Valuation", layout="centered")
 
 @st.cache_resource
-def load_model():
-    return joblib.load('niger_land_xgboost_pipeline.joblib')
+def load_assets():
+    preprocessor = joblib.load('preprocessor.joblib')
+    model = XGBRegressor()
+    model.load_model('model.json')
+    return preprocessor, model
 
-pipeline = load_model()
+preprocessor, model = load_assets()
 
 st.title("🏡 Niger State Land Price Predictor")
 st.write("An AI-powered valuation system for the 25 LGAs of Niger State.")
@@ -25,7 +29,7 @@ with col1:
     ])
     geopolitical_zone = st.selectbox("Geopolitical Zone", options=['Zone A', 'Zone B', 'Zone C'])
     land_size_sqm = st.number_input("Land Size (sqm)", min_value=100.0, max_value=50000.0, value=600.0)
-    title_type = st.selectbox("Title Status", options=['C of O', 'Governor Consent', 'Gazette', 'Excision', 'Customary', 'Deed'])
+    title_type = st.selectbox("Title Status", options=['C of O', 'Governor Consent', 'Gazette', 'Excision', 'Customary', 'Right of Occupancy'])
 
 with col2:
     land_use = st.selectbox("Land Use Category", options=['Residential', 'Commercial', 'Agricultural', 'Industrial'])
@@ -34,7 +38,7 @@ with col2:
     water = st.radio("Pipe-borne Water Access", options=["Yes", "No"])
 
 if st.button("Predict Land Valuation", use_container_width=True):
-    input_data = pd.DataFrame([{
+    input_df = pd.DataFrame([{
         'lga': lga,
         'geopolitical_zone': geopolitical_zone,
         'land_size_sqm': land_size_sqm,
@@ -47,5 +51,6 @@ if st.button("Predict Land Valuation", use_container_width=True):
         'longitude': 6.5569
     }])
     
-    prediction = pipeline.predict(input_data)[0]
+    transformed_input = preprocessor.transform(input_df)
+    prediction = model.predict(transformed_input)[0]
     st.success(f"### Estimated Value: **₦{prediction:,.2f}**")
